@@ -7,6 +7,25 @@ import { PageHeader } from "../components/PageHeader";
 import { useData } from "../context/DataContext";
 import type { FavoriteList } from "../types";
 
+const getSubmitErrorMessage = (error: unknown, action: "创建" | "重命名") => {
+  const details =
+    typeof error === "object" && error !== null
+      ? (error as { code?: string; message?: string })
+      : null;
+
+  if (details?.code === "23505") return "已经有同名收藏夹，请换一个名称。";
+  if (details?.code === "42P01" || details?.code === "PGRST205") {
+    return "数据库尚未初始化收藏夹功能，请执行最新的 Supabase 数据库迁移。";
+  }
+  if (details?.code === "42501") {
+    return "当前账号没有管理收藏夹的权限，请检查 Supabase 的 RLS 策略。";
+  }
+  if (details?.message?.toLowerCase().includes("fetch")) {
+    return "网络连接失败，请检查网络后重试。";
+  }
+  return details?.message ? `${action}失败：${details.message}` : `${action}失败，请稍后重试。`;
+};
+
 export function FavoriteListsPage() {
   const {
     favoriteLists,
@@ -18,26 +37,39 @@ export function FavoriteListsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<FavoriteList | null>(null);
   const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const openCreate = () => {
     setEditing(null);
     setName("");
+    setFormError("");
     setModalOpen(true);
   };
 
   const openEdit = (list: FavoriteList) => {
     setEditing(list);
     setName(list.name);
+    setFormError("");
     setModalOpen(true);
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const cleanName = name.trim();
-    if (!cleanName) return;
-    if (editing) await renameFavoriteList(editing.id, cleanName);
-    else await createFavoriteList(cleanName);
-    setModalOpen(false);
+    if (!cleanName || saving) return;
+
+    setSaving(true);
+    setFormError("");
+    try {
+      if (editing) await renameFavoriteList(editing.id, cleanName);
+      else await createFavoriteList(cleanName);
+      setModalOpen(false);
+    } catch (submitError) {
+      setFormError(getSubmitErrorMessage(submitError, editing ? "重命名" : "创建"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async (list: FavoriteList) => {
@@ -105,31 +137,51 @@ export function FavoriteListsPage() {
 
       <Modal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          if (!saving) setModalOpen(false);
+        }}
         title={editing ? "重命名收藏夹" : "新建收藏夹"}
         footer={
           <>
-            <button className="secondary-button" onClick={() => setModalOpen(false)}>
+            <button
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => setModalOpen(false)}
+            >
               取消
             </button>
-            <button className="primary-button" onClick={() => document.getElementById("list-form-submit")?.click()}>
-              {editing ? "保存名称" : "创建收藏夹"}
+            <button
+              className="primary-button"
+              type="submit"
+              form="favorite-list-form"
+              disabled={saving || !name.trim()}
+            >
+              {saving ? "处理中..." : editing ? "保存名称" : "创建收藏夹"}
             </button>
           </>
         }
       >
-        <form className="modal-form" onSubmit={submit}>
+        <form id="favorite-list-form" className="modal-form" onSubmit={submit}>
           <label className="field">
             <span>收藏夹名称</span>
             <input
               autoFocus
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                setName(event.target.value);
+                if (formError) setFormError("");
+              }}
               placeholder="例如：本周晚餐"
               maxLength={24}
+              disabled={saving}
+              aria-describedby={formError ? "favorite-list-error" : undefined}
             />
           </label>
-          <button id="list-form-submit" className="visually-hidden" />
+          {formError && (
+            <div id="favorite-list-error" className="modal-error" role="alert">
+              {formError}
+            </div>
+          )}
         </form>
       </Modal>
     </div>

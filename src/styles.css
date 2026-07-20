@@ -1681,6 +1681,17 @@ button:disabled {
   padding: 5px 0 8px;
 }
 
+.modal-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  color: #8c3025;
+  background: #f9e8e4;
+  border: 1px solid #efc5bd;
+  border-radius: 5px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
