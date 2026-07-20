@@ -708,33 +708,11 @@ button:disabled {
 
 .detail-hero {
   position: relative;
-  min-height: min(65vh, 620px);
+  min-height: 156px;
   display: flex;
   align-items: flex-end;
-  overflow: hidden;
   color: #fff;
-  background: #465449;
-}
-
-.detail-hero > img,
-.detail-image-placeholder {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.detail-image-placeholder {
-  display: grid;
-  place-items: center;
-}
-
-.detail-hero-overlay {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to top, rgba(21, 26, 22, 0.88) 0, rgba(21, 26, 22, 0.2) 55%, rgba(21, 26, 22, 0.34) 100%);
+  background: #27352d;
 }
 
 .detail-topbar {
@@ -770,57 +748,24 @@ button:disabled {
 }
 
 .detail-heading {
-  position: relative;
-  z-index: 1;
   width: min(100%, 900px);
   margin: 0 auto;
-  padding: 80px 38px 52px;
-}
-
-.detail-category {
-  display: inline-block;
-  margin-bottom: 13px;
-  padding: 5px 10px;
-  color: #23241f;
-  background: #f0c96f;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 82px 38px 24px;
 }
 
 .detail-heading h1 {
   max-width: 760px;
-  margin-bottom: 20px;
+  margin: 0;
   font-family: "Noto Serif SC", serif;
-  font-size: clamp(38px, 6vw, 72px);
-  line-height: 1.16;
-}
-
-.detail-meta {
-  display: flex;
-  gap: 24px;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.detail-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+  font-size: 42px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .detail-content {
   width: min(100%, 900px);
   margin: 0 auto;
-  padding: 48px 38px 90px;
-}
-
-.recipe-description {
-  max-width: 720px;
-  margin-bottom: 48px;
-  color: #575952;
-  font-family: "Noto Serif SC", serif;
-  font-size: 17px;
-  line-height: 2;
+  padding: 36px 38px 90px;
 }
 
 .ingredient-section,
@@ -1858,27 +1803,23 @@ button:disabled {
   }
 
   .detail-hero {
-    min-height: 56vh;
+    min-height: 132px;
   }
 
   .detail-topbar {
-    inset: 18px 16px auto;
+    inset: 14px 16px auto;
   }
 
   .detail-heading {
-    padding: 80px 20px 32px;
+    padding: 68px 20px 20px;
   }
 
   .detail-heading h1 {
-    font-size: 39px;
+    font-size: 30px;
   }
 
   .detail-content {
-    padding: 34px 20px 80px;
-  }
-
-  .recipe-description {
-    font-size: 15px;
+    padding: 28px 20px 80px;
   }
 
   .detail-hero-actions .glass-button span {

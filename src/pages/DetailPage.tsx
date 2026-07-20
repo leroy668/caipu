@@ -1,13 +1,10 @@
 import {
   ArrowLeft,
   Check,
-  ChefHat,
-  Clock,
   Copy,
   Heart,
   Pencil,
   Trash2,
-  Users,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -21,7 +18,6 @@ export function DetailPage() {
   const navigate = useNavigate();
   const {
     recipes,
-    categories,
     favoriteLists,
     memberships,
     duplicateRecipe,
@@ -51,7 +47,6 @@ export function DetailPage() {
     );
   }
 
-  const category = categories.find((item) => item.id === recipe.category_id);
   const listCount = favoriteLists.filter((list) =>
     memberships.some((item) => item.list_id === list.id && item.recipe_id === recipe.id),
   ).length;
@@ -83,14 +78,6 @@ export function DetailPage() {
   return (
     <article className="detail-page">
       <div className="detail-hero">
-        {recipe.image_url ? (
-          <img src={recipe.image_url} alt={recipe.title} />
-        ) : (
-          <div className="detail-image-placeholder">
-            <ChefHat size={52} />
-          </div>
-        )}
-        <div className="detail-hero-overlay" />
         <div className="detail-topbar">
           <button className="glass-button" onClick={() => navigate(-1)}>
             <ArrowLeft size={19} />
@@ -108,22 +95,11 @@ export function DetailPage() {
           </div>
         </div>
         <div className="detail-heading">
-          {category && <span className="detail-category">{category.name}</span>}
           <h1>{recipe.title}</h1>
-          <div className="detail-meta">
-            <span>
-              <Clock size={17} /> {recipe.prep_time} 分钟
-            </span>
-            <span>
-              <Users size={17} /> {recipe.servings} 人份
-            </span>
-          </div>
         </div>
       </div>
 
       <div className="detail-content">
-        {recipe.description && <p className="recipe-description">{recipe.description}</p>}
-
         <section className="ingredient-section">
           <div className="section-heading">
             <span className="section-index">01</span>
