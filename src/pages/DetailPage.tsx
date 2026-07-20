@@ -11,7 +11,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
 import { useData } from "../context/DataContext";
-import { ingredientLabel } from "../utils/ingredients";
+import { formatAmount } from "../utils/ingredients";
 
 export function DetailPage() {
   const { id } = useParams();
@@ -111,23 +111,29 @@ export function DetailPage() {
           <div className="ingredient-group">
             <h3>主料</h3>
             <div className="ingredient-flow">
-              {recipe.main_ingredients.map((ingredient) => (
-                <span className="ingredient-chip main" key={ingredient.id}>
-                  <strong>{ingredient.name}</strong>
-                  <em>{ingredientLabel(ingredient).replace(ingredient.name, "").trim()}</em>
-                </span>
-              ))}
+              {recipe.main_ingredients.map((ingredient) => {
+                const amount = formatAmount(ingredient);
+                return (
+                  <span className="ingredient-chip main" key={ingredient.id}>
+                    <strong>{ingredient.name}</strong>
+                    {amount && <em>{amount}</em>}
+                  </span>
+                );
+              })}
             </div>
           </div>
           <div className="ingredient-group">
             <h3>辅料</h3>
             <div className="ingredient-flow">
-              {recipe.seasonings.map((ingredient) => (
-                <span className="ingredient-chip" key={ingredient.id}>
-                  <strong>{ingredient.name}</strong>
-                  <em>{ingredientLabel(ingredient).replace(ingredient.name, "").trim()}</em>
-                </span>
-              ))}
+              {recipe.seasonings.map((ingredient) => {
+                const amount = formatAmount(ingredient);
+                return (
+                  <span className="ingredient-chip" key={ingredient.id}>
+                    <strong>{ingredient.name}</strong>
+                    {amount && <em>{amount}</em>}
+                  </span>
+                );
+              })}
             </div>
           </div>
         </section>

@@ -26,7 +26,7 @@ const conversionToGram: Record<string, number> = {
 export const normalizeUnit = (unit: string) => unitAliases[unit.trim()] ?? unit.trim();
 
 export const formatAmount = (ingredient: Ingredient) => {
-  if (ingredient.amount === null) return ingredient.unit || "适量";
+  if (ingredient.amount === null) return ingredient.unit;
   const value = Number.isInteger(ingredient.amount)
     ? ingredient.amount
     : Number(ingredient.amount.toFixed(1));
