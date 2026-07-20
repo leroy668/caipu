@@ -212,7 +212,6 @@ export function FavoritesPage() {
                       </div>
                       <div>
                         <strong>{recipe.title}</strong>
-                        <span>{recipe.prep_time} 分钟 · {recipe.servings} 人份</span>
                       </div>
                     </Link>
                   ))}
