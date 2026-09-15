@@ -4,6 +4,7 @@ import {
   Copy,
   Heart,
   Pencil,
+  ShoppingBasket,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
@@ -29,6 +30,8 @@ export function DetailPage() {
   const [favoriteOpen, setFavoriteOpen] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [working, setWorking] = useState(false);
+  const [addingToPurchase, setAddingToPurchase] = useState(false);
+  const [purchaseError, setPurchaseError] = useState("");
 
   if (!recipe) {
     return (
@@ -50,6 +53,11 @@ export function DetailPage() {
   const listCount = favoriteLists.filter((list) =>
     memberships.some((item) => item.list_id === list.id && item.recipe_id === recipe.id),
   ).length;
+  const defaultList = favoriteLists[0] ?? null;
+  const inPurchase = Boolean(
+    defaultList &&
+      memberships.some((item) => item.list_id === defaultList.id && item.recipe_id === recipe.id),
+  );
 
   const handleDuplicate = async () => {
     setWorking(true);
@@ -75,6 +83,27 @@ export function DetailPage() {
     setNewListName("");
   };
 
+  const addToPurchase = async () => {
+    if (addingToPurchase || inPurchase) return;
+    setPurchaseError("");
+    setAddingToPurchase(true);
+    try {
+      const list = defaultList ?? (await createFavoriteList("采购清单"));
+      const alreadyAdded = memberships.some(
+        (item) => item.list_id === list.id && item.recipe_id === recipe.id,
+      );
+      if (!alreadyAdded) await toggleFavoriteMembership(list.id, recipe.id);
+    } catch (error) {
+      const message =
+        typeof error === "object" && error !== null && "message" in error
+          ? String(error.message)
+          : "加入采购失败，请稍后重试。";
+      setPurchaseError(message);
+    } finally {
+      setAddingToPurchase(false);
+    }
+  };
+
   return (
     <article className="detail-page">
       <div className="detail-hero">
@@ -84,6 +113,15 @@ export function DetailPage() {
             返回
           </button>
           <div className="detail-hero-actions">
+            <button
+              className={`glass-button purchase-action${inPurchase ? " is-complete" : ""}`}
+              onClick={() => void addToPurchase()}
+              disabled={addingToPurchase || inPurchase}
+              title={inPurchase ? "已加入采购" : "加入采购"}
+            >
+              <ShoppingBasket size={19} />
+              <span>{addingToPurchase ? "加入中..." : inPurchase ? "已加入采购" : "加入采购"}</span>
+            </button>
             <button className="glass-button icon-only-mobile" onClick={() => setFavoriteOpen(true)}>
               <Heart size={19} fill={listCount ? "currentColor" : "none"} />
               <span>{listCount ? `已存入 ${listCount} 个收藏夹` : "收藏"}</span>
@@ -96,6 +134,11 @@ export function DetailPage() {
         </div>
         <div className="detail-heading">
           <h1>{recipe.title}</h1>
+          {purchaseError && (
+            <p className="detail-action-error" role="alert">
+              {purchaseError}
+            </p>
+          )}
         </div>
       </div>
 
