@@ -29,6 +29,8 @@ type DataContextValue = AppSnapshot & {
   renameFavoriteList: (id: string, name: string) => Promise<void>;
   deleteFavoriteList: (id: string) => Promise<void>;
   toggleFavoriteMembership: (listId: string, recipeId: string) => Promise<void>;
+  removeFavoriteMembership: (listId: string, recipeId: string) => Promise<void>;
+  clearFavoriteList: (listId: string) => Promise<void>;
 };
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -368,6 +370,45 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     else setSnapshot(update);
   };
 
+  const removeFavoriteMembership = async (listId: string, recipeId: string) => {
+    const exists = snapshot.memberships.some(
+      (item) => item.list_id === listId && item.recipe_id === recipeId,
+    );
+    if (!exists) return;
+    if (!isDemo && supabase) {
+      const { error: deleteError } = await supabase
+        .from("favorite_list_recipes")
+        .delete()
+        .eq("list_id", listId)
+        .eq("recipe_id", recipeId);
+      if (deleteError) throw deleteError;
+    }
+    const update = (current: AppSnapshot): AppSnapshot => ({
+      ...current,
+      memberships: current.memberships.filter(
+        (item) => !(item.list_id === listId && item.recipe_id === recipeId),
+      ),
+    });
+    if (isDemo) commitLocal(update);
+    else setSnapshot(update);
+  };
+
+  const clearFavoriteList = async (listId: string) => {
+    if (!isDemo && supabase) {
+      const { error: deleteError } = await supabase
+        .from("favorite_list_recipes")
+        .delete()
+        .eq("list_id", listId);
+      if (deleteError) throw deleteError;
+    }
+    const update = (current: AppSnapshot): AppSnapshot => ({
+      ...current,
+      memberships: current.memberships.filter((item) => item.list_id !== listId),
+    });
+    if (isDemo) commitLocal(update);
+    else setSnapshot(update);
+  };
+
   const value: DataContextValue = {
     ...snapshot,
     loading,
@@ -386,6 +427,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     renameFavoriteList,
     deleteFavoriteList,
     toggleFavoriteMembership,
+    removeFavoriteMembership,
+    clearFavoriteList,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

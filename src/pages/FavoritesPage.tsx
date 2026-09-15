@@ -3,9 +3,10 @@ import {
   ChevronDown,
   CircleCheck,
   FolderHeart,
-  RotateCcw,
   Settings2,
   ShoppingBasket,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -21,11 +22,20 @@ import {
 export function FavoritesPage() {
   const { listId } = useParams();
   const navigate = useNavigate();
-  const { favoriteLists, memberships, recipes } = useData();
+  const {
+    favoriteLists,
+    memberships,
+    recipes,
+    removeFavoriteMembership,
+    clearFavoriteList,
+  } = useData();
   const activeList =
     favoriteLists.find((list) => list.id === listId) ?? favoriteLists[0] ?? null;
   const purchaseStorageKey = activeList ? `shiji-purchased-${activeList.id}` : "";
   const [purchased, setPurchased] = useState<Set<string>>(new Set());
+  const [removingRecipeId, setRemovingRecipeId] = useState<string | null>(null);
+  const [clearingList, setClearingList] = useState(false);
+  const [membershipError, setMembershipError] = useState("");
 
   useEffect(() => {
     if (!activeList) return;
@@ -66,9 +76,49 @@ export function FavoritesPage() {
     });
   };
 
-  const clearPurchased = () => {
-    setPurchased(new Set());
-    if (purchaseStorageKey) localStorage.removeItem(purchaseStorageKey);
+  const removeRecipe = async (recipeId: string, title: string) => {
+    if (!activeList || removingRecipeId || clearingList) return;
+    if (!window.confirm(`将“${title}”移出采购吗？菜谱本身不会被删除。`)) return;
+    setMembershipError("");
+    setRemovingRecipeId(recipeId);
+    try {
+      await removeFavoriteMembership(activeList.id, recipeId);
+      const remainingRecipes = listRecipes.filter((recipe) => recipe.id !== recipeId);
+      const remainingKeys = new Set([
+        ...aggregateMainIngredients(remainingRecipes).map((ingredient) => `main:${ingredient.key}`),
+        ...aggregateSeasonings(remainingRecipes).map((ingredient) => `seasoning:${ingredient.key}`),
+      ]);
+      setPurchased((current) => {
+        const next = new Set([...current].filter((key) => remainingKeys.has(key)));
+        if (purchaseStorageKey) {
+          if (next.size) localStorage.setItem(purchaseStorageKey, JSON.stringify([...next]));
+          else localStorage.removeItem(purchaseStorageKey);
+        }
+        return next;
+      });
+    } catch (error) {
+      setMembershipError(error instanceof Error ? error.message : "移出采购失败，请稍后重试。");
+    } finally {
+      setRemovingRecipeId(null);
+    }
+  };
+
+  const clearListRecipes = async () => {
+    if (!activeList || !listRecipes.length || clearingList || removingRecipeId) return;
+    if (!window.confirm(`清空收藏夹“${activeList.name}”里的全部采购菜谱吗？菜谱本身不会被删除。`)) {
+      return;
+    }
+    setMembershipError("");
+    setClearingList(true);
+    try {
+      await clearFavoriteList(activeList.id);
+      setPurchased(new Set());
+      if (purchaseStorageKey) localStorage.removeItem(purchaseStorageKey);
+    } catch (error) {
+      setMembershipError(error instanceof Error ? error.message : "清空采购失败，请稍后重试。");
+    } finally {
+      setClearingList(false);
+    }
   };
 
   return (
@@ -114,6 +164,26 @@ export function FavoritesPage() {
           {listRecipes.length ? (
             <div className="favorites-layout">
               <div className="shopping-summary">
+                <div className="shopping-summary-heading">
+                  <div>
+                    <h2>采购清单</h2>
+                    <p>点击材料标记已购</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="clear-purchase-list-button"
+                    onClick={() => void clearListRecipes()}
+                    disabled={clearingList || Boolean(removingRecipeId)}
+                  >
+                    <Trash2 size={16} />
+                    {clearingList ? "清空中..." : "一键清空"}
+                  </button>
+                </div>
+                {membershipError && (
+                  <p className="shopping-error" role="alert">
+                    {membershipError}
+                  </p>
+                )}
                 <section className="shopping-section">
                   <div className="shopping-heading">
                     <div>
@@ -189,14 +259,6 @@ export function FavoritesPage() {
                   </div>
                 </section>
 
-                <button
-                  className="reset-purchase-button"
-                  onClick={clearPurchased}
-                  disabled={!purchased.size}
-                >
-                  <RotateCcw size={16} />
-                  一键清空
-                </button>
               </div>
 
               <aside className="favorite-recipes">
@@ -206,14 +268,26 @@ export function FavoritesPage() {
                 </div>
                 <div className="compact-recipe-list">
                   {listRecipes.map((recipe) => (
-                    <Link to={`/recipe/${recipe.id}`} key={recipe.id}>
-                      <div className="compact-recipe-image">
-                        {recipe.image_url ? <img src={recipe.image_url} alt="" /> : recipe.title[0]}
-                      </div>
-                      <div>
-                        <strong>{recipe.title}</strong>
-                      </div>
-                    </Link>
+                    <div className="compact-recipe-row" key={recipe.id}>
+                      <Link to={`/recipe/${recipe.id}`}>
+                        <div className="compact-recipe-image">
+                          {recipe.image_url ? <img src={recipe.image_url} alt="" /> : recipe.title[0]}
+                        </div>
+                        <div className="compact-recipe-copy">
+                          <strong>{recipe.title}</strong>
+                        </div>
+                      </Link>
+                      <button
+                        type="button"
+                        className="compact-recipe-remove"
+                        title="移出采购"
+                        aria-label={`移出采购：${recipe.title}`}
+                        disabled={clearingList || Boolean(removingRecipeId)}
+                        onClick={() => void removeRecipe(recipe.id, recipe.title)}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </aside>
