@@ -66,7 +66,7 @@ export function FavoritesPage() {
     });
   };
 
-  const resetPurchased = () => {
+  const clearPurchased = () => {
     setPurchased(new Set());
     if (purchaseStorageKey) localStorage.removeItem(purchaseStorageKey);
   };
@@ -191,11 +191,11 @@ export function FavoritesPage() {
 
                 <button
                   className="reset-purchase-button"
-                  onClick={resetPurchased}
+                  onClick={clearPurchased}
                   disabled={!purchased.size}
                 >
                   <RotateCcw size={16} />
-                  重置全部已购状态
+                  一键清空
                 </button>
               </div>
 
