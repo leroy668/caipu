@@ -5,9 +5,11 @@ import type {
   AppSnapshot,
   Category,
   FavoriteList,
+  FavoriteMembership,
   Recipe,
   RecipeDraft,
 } from "../types";
+import { favoriteRecipeOrderStorageKey } from "../utils/favorites";
 import { useAuth } from "./AuthContext";
 
 const STORAGE_KEY = "shiji-cookbook-v2";
@@ -31,6 +33,7 @@ type DataContextValue = AppSnapshot & {
   toggleFavoriteMembership: (listId: string, recipeId: string) => Promise<void>;
   removeFavoriteMembership: (listId: string, recipeId: string) => Promise<void>;
   clearFavoriteList: (listId: string) => Promise<void>;
+  reorderFavoriteList: (listId: string, orderedRecipeIds: string[]) => Promise<void>;
 };
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -74,19 +77,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     setLoading(true);
     setError("");
-    const [recipesResult, categoriesResult, listsResult, membershipsResult] =
+    const [recipesResult, categoriesResult, listsResult, membershipsWithOrderResult] =
       await Promise.all([
         supabase.from("recipes").select("*").order("created_at", { ascending: false }),
         supabase.from("categories").select("*").order("sort_order"),
         supabase.from("favorite_lists").select("*").order("created_at"),
-        supabase.from("favorite_list_recipes").select("list_id, recipe_id"),
+        supabase
+          .from("favorite_list_recipes")
+          .select("list_id, recipe_id, sort_order")
+          .order("list_id")
+          .order("sort_order"),
       ]);
+    let membershipsData: FavoriteMembership[] | null = membershipsWithOrderResult.data as
+      | FavoriteMembership[]
+      | null;
+    let membershipsError = membershipsWithOrderResult.error;
+    if (membershipsWithOrderResult.error?.message.includes("sort_order")) {
+      const fallbackResult = await supabase
+        .from("favorite_list_recipes")
+        .select("list_id, recipe_id")
+        .order("list_id")
+        .order("created_at");
+      membershipsData = fallbackResult.data as FavoriteMembership[] | null;
+      membershipsError = fallbackResult.error;
+    }
 
     const firstError =
       recipesResult.error ??
       categoriesResult.error ??
       listsResult.error ??
-      membershipsResult.error;
+      membershipsError;
     if (firstError) {
       setError(firstError.message);
       setLoading(false);
@@ -97,7 +117,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       recipes: (recipesResult.data ?? []) as Recipe[],
       categories: (categoriesResult.data ?? []) as Category[],
       favoriteLists: (listsResult.data ?? []) as FavoriteList[],
-      memberships: membershipsResult.data ?? [],
+      memberships: membershipsData ?? [],
     });
     setLoading(false);
   }, [isDemo, user]);
@@ -346,8 +366,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const exists = snapshot.memberships.some(
       (item) => item.list_id === listId && item.recipe_id === recipeId,
     );
+    const nextSortOrder = snapshot.memberships
+      .filter((item) => item.list_id === listId)
+      .reduce((max, item) => Math.max(max, item.sort_order ?? -1), -1) + 1;
     if (!isDemo && supabase) {
-      const result = exists
+      let result = exists
         ? await supabase
             .from("favorite_list_recipes")
             .delete()
@@ -355,7 +378,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             .eq("recipe_id", recipeId)
         : await supabase
             .from("favorite_list_recipes")
-            .insert({ list_id: listId, recipe_id: recipeId });
+            .insert({ list_id: listId, recipe_id: recipeId, sort_order: nextSortOrder });
+      if (!exists && result.error?.message.includes("sort_order")) {
+        result = await supabase
+          .from("favorite_list_recipes")
+          .insert({ list_id: listId, recipe_id: recipeId });
+      }
       if (result.error) throw result.error;
     }
     const update = (current: AppSnapshot): AppSnapshot => ({
@@ -364,7 +392,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ? current.memberships.filter(
             (item) => !(item.list_id === listId && item.recipe_id === recipeId),
           )
-        : [...current.memberships, { list_id: listId, recipe_id: recipeId }],
+        : [...current.memberships, { list_id: listId, recipe_id: recipeId, sort_order: nextSortOrder }],
     });
     if (isDemo) commitLocal(update);
     else setSnapshot(update);
@@ -409,6 +437,47 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     else setSnapshot(update);
   };
 
+  const reorderFavoriteList = async (listId: string, orderedRecipeIds: string[]) => {
+    const currentIds = snapshot.memberships
+      .filter((item) => item.list_id === listId)
+      .map((item) => item.recipe_id);
+    const currentIdSet = new Set(currentIds);
+    const orderedIds = orderedRecipeIds.filter((id) => currentIdSet.has(id));
+    if (orderedIds.length !== currentIds.length || new Set(orderedIds).size !== currentIds.length) {
+      throw new Error("采购菜谱顺序无效，请刷新后重试。");
+    }
+    if (!isDemo && supabase) {
+      const { error: reorderError } = await supabase.rpc("reorder_favorite_list_recipes", {
+        target_list_id: listId,
+        ordered_recipe_ids: orderedIds,
+      });
+      if (reorderError) {
+        const functionUnavailable =
+          reorderError.code === "PGRST202" ||
+          reorderError.code === "42883" ||
+          reorderError.message.includes("reorder_favorite_list_recipes");
+        if (!functionUnavailable) throw reorderError;
+        localStorage.setItem(
+          favoriteRecipeOrderStorageKey(listId),
+          JSON.stringify(orderedIds),
+        );
+      } else {
+        localStorage.removeItem(favoriteRecipeOrderStorageKey(listId));
+      }
+    }
+    const orderMap = new Map(orderedIds.map((recipeId, index) => [recipeId, index]));
+    const update = (current: AppSnapshot): AppSnapshot => ({
+      ...current,
+      memberships: current.memberships.map((item) => {
+        if (item.list_id !== listId) return item;
+        const sortOrder = orderMap.get(item.recipe_id);
+        return sortOrder === undefined ? item : { ...item, sort_order: sortOrder };
+      }),
+    });
+    if (isDemo) commitLocal(update);
+    else setSnapshot(update);
+  };
+
   const value: DataContextValue = {
     ...snapshot,
     loading,
@@ -429,6 +498,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     toggleFavoriteMembership,
     removeFavoriteMembership,
     clearFavoriteList,
+    reorderFavoriteList,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

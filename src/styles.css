@@ -1576,9 +1576,9 @@ button:disabled {
 .compact-recipe-row {
   min-height: 70px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   padding: 9px 13px;
   border-bottom: 1px solid var(--line-soft);
 }
@@ -1597,6 +1597,12 @@ button:disabled {
   grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
   gap: 11px;
+}
+
+.compact-recipe-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .compact-recipe-image {
@@ -1632,6 +1638,7 @@ button:disabled {
   font-size: 12px;
 }
 
+.compact-recipe-move,
 .compact-recipe-remove {
   width: 28px;
   height: 28px;
@@ -1645,11 +1652,13 @@ button:disabled {
   cursor: pointer;
 }
 
+.compact-recipe-move:hover:not(:disabled),
 .compact-recipe-remove:hover:not(:disabled) {
   color: #a43d31;
   background: #fbf1ee;
 }
 
+.compact-recipe-move:disabled,
 .compact-recipe-remove:disabled {
   opacity: 0.45;
   cursor: not-allowed;

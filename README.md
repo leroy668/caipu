@@ -14,7 +14,7 @@ npm run dev
 ## 接入 Supabase
 
 1. 在 Supabase 新建项目。
-2. 打开 SQL Editor，执行 `supabase/migrations/001_initial_schema.sql`。
+2. 打开 SQL Editor，先执行 `supabase/migrations/001_initial_schema.sql`，再按顺序执行后续迁移文件。
 3. 将 `.env.example` 复制为 `.env.local`，填写项目 URL 与 anon key：
 
 ```env
@@ -30,8 +30,9 @@ SQL 脚本会创建：
 - `recipes`：菜谱及 JSONB 主料、辅料、步骤
 - `categories`：可排序分类
 - `favorite_lists`：自定义收藏夹
-- `favorite_list_recipes`：收藏夹与菜谱关系
+- `favorite_list_recipes`：收藏夹与菜谱关系及菜谱排序
 - `reorder_categories`：分类批量排序 RPC
+- `reorder_favorite_list_recipes`：收藏夹菜谱批量排序 RPC
 - 完整 RLS 策略
 - `recipe-images` 公共读取存储桶及用户目录写入策略
 - 旧版 `is_favorite=true` 到“默认收藏夹”的安全迁移

@@ -40,6 +40,7 @@ export type FavoriteList = {
 export type FavoriteMembership = {
   list_id: string;
   recipe_id: string;
+  sort_order?: number;
 };
 
 export type AppSnapshot = {

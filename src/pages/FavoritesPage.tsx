@@ -1,6 +1,7 @@
 import {
   Check,
   ChevronDown,
+  ChevronUp,
   CircleCheck,
   FolderHeart,
   Settings2,
@@ -18,6 +19,20 @@ import {
   aggregateSeasonings,
   formatAmount,
 } from "../utils/ingredients";
+import { favoriteRecipeOrderStorageKey } from "../utils/favorites";
+
+const getMembershipErrorMessage = (error: unknown, fallback: string) => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String(error.message)
+        : "";
+  if (message.includes("sort_order") || message.includes("reorder_favorite_list_recipes")) {
+    return "云端尚未启用菜谱排序，请先执行 supabase/migrations/002_favorite_recipe_order.sql。";
+  }
+  return message || fallback;
+};
 
 export function FavoritesPage() {
   const { listId } = useParams();
@@ -28,13 +43,16 @@ export function FavoritesPage() {
     recipes,
     removeFavoriteMembership,
     clearFavoriteList,
+    reorderFavoriteList,
   } = useData();
   const activeList =
     favoriteLists.find((list) => list.id === listId) ?? favoriteLists[0] ?? null;
   const purchaseStorageKey = activeList ? `shiji-purchased-${activeList.id}` : "";
+  const recipeOrderStorageKey = activeList ? favoriteRecipeOrderStorageKey(activeList.id) : "";
   const [purchased, setPurchased] = useState<Set<string>>(new Set());
   const [removingRecipeId, setRemovingRecipeId] = useState<string | null>(null);
   const [clearingList, setClearingList] = useState(false);
+  const [reorderingRecipeId, setReorderingRecipeId] = useState<string | null>(null);
   const [membershipError, setMembershipError] = useState("");
 
   useEffect(() => {
@@ -56,11 +74,30 @@ export function FavoritesPage() {
 
   const listRecipes = useMemo(() => {
     if (!activeList) return [];
-    const ids = new Set(
-      memberships.filter((item) => item.list_id === activeList.id).map((item) => item.recipe_id),
+    const listMemberships = memberships.filter((item) => item.list_id === activeList.id);
+    const membershipOrder = new Map(
+      listMemberships.map((item, index) => [item.recipe_id, item.sort_order ?? index]),
     );
-    return recipes.filter((recipe) => ids.has(recipe.id));
-  }, [activeList, memberships, recipes]);
+    let savedOrder: string[] = [];
+    if (recipeOrderStorageKey) {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(recipeOrderStorageKey) ?? "[]");
+        if (Array.isArray(parsed)) {
+          savedOrder = parsed.filter((id): id is string => typeof id === "string");
+        }
+      } catch {
+        savedOrder = [];
+      }
+    }
+    const savedOrderMap = new Map(savedOrder.map((recipeId, index) => [recipeId, index]));
+    return recipes
+      .filter((recipe) => membershipOrder.has(recipe.id))
+      .sort(
+        (left, right) =>
+          (savedOrderMap.get(left.id) ?? membershipOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+          (savedOrderMap.get(right.id) ?? membershipOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+      );
+  }, [activeList, memberships, recipeOrderStorageKey, recipes]);
 
   const mainIngredients = useMemo(() => aggregateMainIngredients(listRecipes), [listRecipes]);
   const seasonings = useMemo(() => aggregateSeasonings(listRecipes), [listRecipes]);
@@ -77,12 +114,24 @@ export function FavoritesPage() {
   };
 
   const removeRecipe = async (recipeId: string, title: string) => {
-    if (!activeList || removingRecipeId || clearingList) return;
+    if (!activeList || removingRecipeId || clearingList || reorderingRecipeId) return;
     if (!window.confirm(`将“${title}”移出采购吗？菜谱本身不会被删除。`)) return;
     setMembershipError("");
     setRemovingRecipeId(recipeId);
     try {
       await removeFavoriteMembership(activeList.id, recipeId);
+      if (recipeOrderStorageKey) {
+        try {
+          const savedOrder = JSON.parse(localStorage.getItem(recipeOrderStorageKey) ?? "[]");
+          if (Array.isArray(savedOrder)) {
+            const nextOrder = savedOrder.filter((id) => id !== recipeId);
+            if (nextOrder.length) localStorage.setItem(recipeOrderStorageKey, JSON.stringify(nextOrder));
+            else localStorage.removeItem(recipeOrderStorageKey);
+          }
+        } catch {
+          localStorage.removeItem(recipeOrderStorageKey);
+        }
+      }
       const remainingRecipes = listRecipes.filter((recipe) => recipe.id !== recipeId);
       const remainingKeys = new Set([
         ...aggregateMainIngredients(remainingRecipes).map((ingredient) => `main:${ingredient.key}`),
@@ -97,14 +146,16 @@ export function FavoritesPage() {
         return next;
       });
     } catch (error) {
-      setMembershipError(error instanceof Error ? error.message : "移出采购失败，请稍后重试。");
+      setMembershipError(getMembershipErrorMessage(error, "移出采购失败，请稍后重试。"));
     } finally {
       setRemovingRecipeId(null);
     }
   };
 
   const clearListRecipes = async () => {
-    if (!activeList || !listRecipes.length || clearingList || removingRecipeId) return;
+    if (!activeList || !listRecipes.length || clearingList || removingRecipeId || reorderingRecipeId) {
+      return;
+    }
     if (!window.confirm(`清空收藏夹“${activeList.name}”里的全部采购菜谱吗？菜谱本身不会被删除。`)) {
       return;
     }
@@ -114,10 +165,36 @@ export function FavoritesPage() {
       await clearFavoriteList(activeList.id);
       setPurchased(new Set());
       if (purchaseStorageKey) localStorage.removeItem(purchaseStorageKey);
+      if (recipeOrderStorageKey) localStorage.removeItem(recipeOrderStorageKey);
     } catch (error) {
-      setMembershipError(error instanceof Error ? error.message : "清空采购失败，请稍后重试。");
+      setMembershipError(getMembershipErrorMessage(error, "清空采购失败，请稍后重试。"));
     } finally {
       setClearingList(false);
+    }
+  };
+
+  const moveRecipe = async (recipeId: string, direction: -1 | 1) => {
+    if (!activeList || clearingList || removingRecipeId || reorderingRecipeId) return;
+    const currentIndex = listRecipes.findIndex((recipe) => recipe.id === recipeId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= listRecipes.length) return;
+
+    const orderedRecipes = [...listRecipes];
+    [orderedRecipes[currentIndex], orderedRecipes[targetIndex]] = [
+      orderedRecipes[targetIndex],
+      orderedRecipes[currentIndex],
+    ];
+    setMembershipError("");
+    setReorderingRecipeId(recipeId);
+    try {
+      await reorderFavoriteList(
+        activeList.id,
+        orderedRecipes.map((recipe) => recipe.id),
+      );
+    } catch (error) {
+      setMembershipError(getMembershipErrorMessage(error, "调整顺序失败，请稍后重试。"));
+    } finally {
+      setReorderingRecipeId(null);
     }
   };
 
@@ -173,7 +250,9 @@ export function FavoritesPage() {
                     type="button"
                     className="clear-purchase-list-button"
                     onClick={() => void clearListRecipes()}
-                    disabled={clearingList || Boolean(removingRecipeId)}
+                    disabled={
+                      clearingList || Boolean(removingRecipeId) || Boolean(reorderingRecipeId)
+                    }
                   >
                     <Trash2 size={16} />
                     {clearingList ? "清空中..." : "一键清空"}
@@ -267,7 +346,7 @@ export function FavoritesPage() {
                   <span>{listRecipes.length}</span>
                 </div>
                 <div className="compact-recipe-list">
-                  {listRecipes.map((recipe) => (
+                  {listRecipes.map((recipe, recipeIndex) => (
                     <div className="compact-recipe-row" key={recipe.id}>
                       <Link to={`/recipe/${recipe.id}`}>
                         <div className="compact-recipe-image">
@@ -277,16 +356,52 @@ export function FavoritesPage() {
                           <strong>{recipe.title}</strong>
                         </div>
                       </Link>
-                      <button
-                        type="button"
-                        className="compact-recipe-remove"
-                        title="移出采购"
-                        aria-label={`移出采购：${recipe.title}`}
-                        disabled={clearingList || Boolean(removingRecipeId)}
-                        onClick={() => void removeRecipe(recipe.id, recipe.title)}
-                      >
-                        <X size={15} />
-                      </button>
+                      <div className="compact-recipe-actions">
+                        <button
+                          type="button"
+                          className="compact-recipe-move"
+                          title="上移"
+                          aria-label={`上移：${recipe.title}`}
+                          disabled={
+                            recipeIndex === 0 ||
+                            clearingList ||
+                            Boolean(removingRecipeId) ||
+                            Boolean(reorderingRecipeId)
+                          }
+                          onClick={() => void moveRecipe(recipe.id, -1)}
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="compact-recipe-move"
+                          title="下移"
+                          aria-label={`下移：${recipe.title}`}
+                          disabled={
+                            recipeIndex === listRecipes.length - 1 ||
+                            clearingList ||
+                            Boolean(removingRecipeId) ||
+                            Boolean(reorderingRecipeId)
+                          }
+                          onClick={() => void moveRecipe(recipe.id, 1)}
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="compact-recipe-remove"
+                          title="移出采购"
+                          aria-label={`移出采购：${recipe.title}`}
+                          disabled={
+                            clearingList ||
+                            Boolean(removingRecipeId) ||
+                            Boolean(reorderingRecipeId)
+                          }
+                          onClick={() => void removeRecipe(recipe.id, recipe.title)}
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
